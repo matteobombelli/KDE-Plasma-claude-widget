@@ -1,0 +1,21 @@
+{
+    "KPlugin": {
+        "Id": "com.github.claude-usage",
+        "Name": "Claude Usage",
+        "Description": "Shows Claude Code 5-hour and weekly usage limits",
+        "Category": "Utilities",
+        "Icon": "dialog-information",
+        "Authors": [
+            {
+                "Name": "Claude Widget",
+                "Email": ""
+            }
+        ],
+        "Version": "1.0.0",
+        "License": "MIT"
+    },
+    "KPackageStructure": "Plasma/Applet",
+    "X-Plasma-API": "declarativeappletscript",
+    "X-Plasma-API-Minimum-Version": "6.0",
+    "X-Plasma-MainScript": "ui/main.qml"
+}
