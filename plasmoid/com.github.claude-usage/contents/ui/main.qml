@@ -19,6 +19,15 @@ PlasmoidItem {
     property string subscriptionType: ""
     property string userEmail: ""
 
+    // Ticks every 30s to keep countdown text fresh
+    property int clockTick: 0
+    Timer {
+        interval: 30000
+        repeat: true
+        running: true
+        onTriggered: root.clockTick++
+    }
+
     preferredRepresentation: compactRepresentation
     toolTipMainText: "Claude Usage"
     toolTipSubText: buildTooltip()
@@ -32,16 +41,16 @@ PlasmoidItem {
         var lines = [];
         if (fiveHourPercent >= 0) {
             lines.push("5-hour limit: " + fiveHourPercent.toFixed(0) + "%");
-            if (fiveHourReset) lines.push("  Resets: " + formatReset(fiveHourReset));
+            if (fiveHourReset) lines.push("  Resets: " + formatReset(fiveHourReset, clockTick));
         }
         if (weeklyPercent >= 0) {
             lines.push("Weekly limit: " + weeklyPercent.toFixed(0) + "%");
-            if (weeklyReset) lines.push("  Resets: " + formatReset(weeklyReset));
+            if (weeklyReset) lines.push("  Resets: " + formatReset(weeklyReset, clockTick));
         }
         return lines.join("\n");
     }
 
-    function formatReset(resetStr) {
+    function formatReset(resetStr, _tick) {
         var num = Number(resetStr);
         var d;
         if (!isNaN(num) && num > 1000000000) {
@@ -338,7 +347,7 @@ PlasmoidItem {
                     }
 
                     PlasmaComponents.Label {
-                        text: root.fiveHourReset ? "Resets " + root.formatReset(root.fiveHourReset) : ""
+                        text: root.fiveHourReset ? "Resets " + root.formatReset(root.fiveHourReset, root.clockTick) : ""
                         font.pixelSize: Kirigami.Theme.smallFont.pixelSize
                         color: Kirigami.Theme.disabledTextColor
                         visible: text !== ""
@@ -384,7 +393,7 @@ PlasmoidItem {
                     }
 
                     PlasmaComponents.Label {
-                        text: root.weeklyReset ? "Resets " + root.formatReset(root.weeklyReset) : ""
+                        text: root.weeklyReset ? "Resets " + root.formatReset(root.weeklyReset, root.clockTick) : ""
                         font.pixelSize: Kirigami.Theme.smallFont.pixelSize
                         color: Kirigami.Theme.disabledTextColor
                         visible: text !== ""
