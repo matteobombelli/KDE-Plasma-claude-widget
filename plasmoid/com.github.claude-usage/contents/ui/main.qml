@@ -416,9 +416,10 @@ PlasmoidItem {
                 }
 
                 PlasmaComponents.Button {
-                    text: "Refresh Now"
+                    text: root.loading ? "Refreshing..." : "Refresh Now"
                     icon.name: "view-refresh"
                     Layout.fillWidth: true
+                    enabled: !root.loading
                     onClicked: {
                         root.loading = true;
                         root.fetchData();
