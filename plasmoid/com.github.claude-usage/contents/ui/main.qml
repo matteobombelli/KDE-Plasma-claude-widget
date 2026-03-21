@@ -31,11 +31,11 @@ PlasmoidItem {
         }
         var lines = [];
         if (fiveHourPercent >= 0) {
-            lines.push("5-hour limit: " + fiveHourPercent.toFixed(1) + "%");
+            lines.push("5-hour limit: " + fiveHourPercent.toFixed(0) + "%");
             if (fiveHourReset) lines.push("  Resets: " + formatReset(fiveHourReset));
         }
         if (weeklyPercent >= 0) {
-            lines.push("Weekly limit: " + weeklyPercent.toFixed(1) + "%");
+            lines.push("Weekly limit: " + weeklyPercent.toFixed(0) + "%");
             if (weeklyReset) lines.push("  Resets: " + formatReset(weeklyReset));
         }
         return lines.join("\n");
@@ -97,8 +97,9 @@ PlasmoidItem {
 
     readonly property string fetchScript: "$HOME/.local/bin/claude-usage-fetch"
 
+    // Separate DataSource for fetch commands (output gets parsed)
     PlasmaSupport.DataSource {
-        id: executable
+        id: fetchSource
         engine: "executable"
         connectedSources: []
 
@@ -111,17 +112,28 @@ PlasmoidItem {
         }
     }
 
-    // Append a unique comment to force DataSource to re-execute the same command
-    function runCmd(cmd) {
-        executable.connectSource(cmd + " #" + Date.now());
+    // Separate DataSource for fire-and-forget commands (logout, konsole, etc.)
+    PlasmaSupport.DataSource {
+        id: cmdSource
+        engine: "executable"
+        connectedSources: []
+
+        onNewData: function(source, data) {
+            disconnectSource(source);
+        }
     }
 
     function fetchData() {
-        runCmd("python3 " + fetchScript);
+        // Use unique env var to bust DataSource cache without affecting the command
+        fetchSource.connectSource("CACHE_BUST=" + Date.now() + " python3 " + fetchScript);
     }
 
     function fetchCached() {
-        runCmd("python3 " + fetchScript + " --cached");
+        fetchSource.connectSource("CACHE_BUST=" + Date.now() + " python3 " + fetchScript + " --cached");
+    }
+
+    function runCmd(cmd) {
+        cmdSource.connectSource("CACHE_BUST=" + Date.now() + " " + cmd);
     }
 
     Timer {
@@ -262,7 +274,7 @@ PlasmoidItem {
                         }
                         Item { Layout.fillWidth: true }
                         PlasmaComponents.Label {
-                            text: root.fiveHourPercent >= 0 ? root.fiveHourPercent.toFixed(1) + "%" : "--"
+                            text: root.fiveHourPercent >= 0 ? root.fiveHourPercent.toFixed(0) + "%" : "--"
                             color: "#5B9BD5"
                         }
                     }
@@ -306,7 +318,7 @@ PlasmoidItem {
                         }
                         Item { Layout.fillWidth: true }
                         PlasmaComponents.Label {
-                            text: root.weeklyPercent >= 0 ? root.weeklyPercent.toFixed(1) + "%" : "--"
+                            text: root.weeklyPercent >= 0 ? root.weeklyPercent.toFixed(0) + "%" : "--"
                             color: "#E8913A"
                         }
                     }
