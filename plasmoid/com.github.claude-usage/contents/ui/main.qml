@@ -157,8 +157,8 @@ PlasmoidItem {
     }
 
     compactRepresentation: MouseArea {
-        Layout.minimumWidth: rowLayout.implicitWidth + Kirigami.Units.smallSpacing * 2
-        Layout.preferredWidth: rowLayout.implicitWidth + Kirigami.Units.smallSpacing * 2
+        Layout.minimumWidth: compactColumn.implicitWidth + Kirigami.Units.smallSpacing * 2
+        Layout.preferredWidth: compactColumn.implicitWidth + Kirigami.Units.smallSpacing * 2
         Layout.fillHeight: true
 
         hoverEnabled: true
@@ -166,40 +166,47 @@ PlasmoidItem {
 
         onClicked: root.expanded = !root.expanded
 
-        RowLayout {
-            id: rowLayout
+        ColumnLayout {
+            id: compactColumn
             anchors.centerIn: parent
-            spacing: Kirigami.Units.smallSpacing
+            spacing: 0
 
             PlasmaComponents.Label {
                 text: root.loggedIn && root.fiveHourPercent >= 0 ? Math.round(root.fiveHourPercent) + "%" : "--"
                 color: "#5B9BD5"
-                font.pixelSize: Kirigami.Theme.defaultFont.pixelSize
+                font.pixelSize: Kirigami.Theme.smallFont.pixelSize
                 font.bold: true
-                Layout.alignment: Qt.AlignVCenter
-            }
-
-            Image {
-                source: "../images/claude-color.svg"
-                Layout.preferredWidth: Kirigami.Units.iconSizes.smallMedium
-                Layout.preferredHeight: Kirigami.Units.iconSizes.smallMedium
-                Layout.alignment: Qt.AlignVCenter
-                smooth: true
-                fillMode: Image.PreserveAspectFit
+                Layout.alignment: Qt.AlignHCenter
             }
 
             PlasmaComponents.Label {
                 text: root.loggedIn && root.weeklyPercent >= 0 ? Math.round(root.weeklyPercent) + "%" : "--"
                 color: "#E8913A"
-                font.pixelSize: Kirigami.Theme.defaultFont.pixelSize
+                font.pixelSize: Kirigami.Theme.smallFont.pixelSize
                 font.bold: true
-                Layout.alignment: Qt.AlignVCenter
+                Layout.alignment: Qt.AlignHCenter
             }
         }
     }
 
+    // Discrete refresh interval stops (in minutes)
+    readonly property var intervalStops: [1, 2, 5, 10, 15, 30, 60]
+
+    function intervalFromIndex(idx) {
+        return intervalStops[Math.max(0, Math.min(idx, intervalStops.length - 1))];
+    }
+
+    function indexFromInterval(val) {
+        var best = 0;
+        for (var i = 0; i < intervalStops.length; i++) {
+            if (Math.abs(intervalStops[i] - val) < Math.abs(intervalStops[best] - val))
+                best = i;
+        }
+        return best;
+    }
+
     fullRepresentation: Item {
-        implicitWidth: Kirigami.Units.gridUnit * 16
+        implicitWidth: Kirigami.Units.gridUnit * 14
         implicitHeight: contentColumn.implicitHeight + Kirigami.Units.largeSpacing * 2
 
         ColumnLayout {
@@ -208,10 +215,75 @@ PlasmoidItem {
             anchors.margins: Kirigami.Units.largeSpacing
             spacing: Kirigami.Units.mediumSpacing
 
-            PlasmaExtras.Heading {
-                text: "Claude Usage"
-                level: 3
+            // Title bar with icon buttons
+            RowLayout {
                 Layout.fillWidth: true
+                spacing: Kirigami.Units.smallSpacing
+
+                Image {
+                    source: "../images/claude-color.svg"
+                    Layout.preferredWidth: Kirigami.Units.iconSizes.small
+                    Layout.preferredHeight: Kirigami.Units.iconSizes.small
+                    smooth: true
+                    fillMode: Image.PreserveAspectFit
+                }
+
+                PlasmaExtras.Heading {
+                    text: "Claude" + (root.subscriptionType ? " " + root.subscriptionType.charAt(0).toUpperCase() + root.subscriptionType.slice(1) : "")
+                    level: 4
+                    Layout.fillWidth: true
+                }
+
+                PlasmaComponents.ToolButton {
+                    icon.name: "internet-web-browser"
+                    display: PlasmaComponents.ToolButton.IconOnly
+                    visible: root.loggedIn
+                    PlasmaComponents.ToolTip { text: "Open claude.ai" }
+                    onClicked: {
+                        Qt.openUrlExternally("https://claude.ai");
+                        root.expanded = false;
+                    }
+                }
+
+                PlasmaComponents.ToolButton {
+                    icon.name: "view-refresh"
+                    display: PlasmaComponents.ToolButton.IconOnly
+                    visible: root.loggedIn
+                    enabled: !root.loading
+                    opacity: root.loading ? 0.4 : 1.0
+                    PlasmaComponents.ToolTip { text: root.loading ? "Refreshing..." : "Refresh now" }
+                    onClicked: {
+                        root.loading = true;
+                        root.fetchData();
+                    }
+                }
+
+                PlasmaComponents.ToolButton {
+                    icon.name: "system-log-out"
+                    display: PlasmaComponents.ToolButton.IconOnly
+                    visible: root.loggedIn
+                    PlasmaComponents.ToolTip { text: "Logout" }
+                    onClicked: {
+                        runCmd("claude auth logout");
+                        runCmd("python3 " + fetchScript + " --logout");
+                        root.loggedIn = false;
+                        root.fiveHourPercent = -1;
+                        root.weeklyPercent = -1;
+                        root.userEmail = "";
+                        root.expanded = false;
+                    }
+                }
+            }
+
+            // Email subtitle
+            PlasmaComponents.Label {
+                text: root.userEmail
+                font.pixelSize: Kirigami.Theme.smallFont.pixelSize
+                color: Kirigami.Theme.disabledTextColor
+                Layout.fillWidth: true
+                visible: root.loggedIn && root.userEmail !== ""
+                elide: Text.ElideRight
+                Layout.topMargin: -Kirigami.Units.smallSpacing
             }
 
             Rectangle {
@@ -227,39 +299,6 @@ PlasmoidItem {
                 Layout.fillWidth: true
                 spacing: Kirigami.Units.mediumSpacing
 
-                RowLayout {
-                    Layout.fillWidth: true
-                    spacing: Kirigami.Units.smallSpacing
-
-                    Image {
-                        source: "../images/claude-color.svg"
-                        Layout.preferredWidth: Kirigami.Units.iconSizes.medium
-                        Layout.preferredHeight: Kirigami.Units.iconSizes.medium
-                        smooth: true
-                        fillMode: Image.PreserveAspectFit
-                    }
-
-                    ColumnLayout {
-                        Layout.fillWidth: true
-                        spacing: 0
-
-                        PlasmaComponents.Label {
-                            text: "Claude " + (root.subscriptionType ? root.subscriptionType.charAt(0).toUpperCase() + root.subscriptionType.slice(1) : "")
-                            font.bold: true
-                            Layout.fillWidth: true
-                        }
-
-                        PlasmaComponents.Label {
-                            text: root.userEmail
-                            font.pixelSize: Kirigami.Theme.smallFont.pixelSize
-                            color: Kirigami.Theme.disabledTextColor
-                            Layout.fillWidth: true
-                            visible: root.userEmail !== ""
-                            elide: Text.ElideRight
-                        }
-                    }
-                }
-
                 // 5-hour usage
                 ColumnLayout {
                     Layout.fillWidth: true
@@ -271,18 +310,20 @@ PlasmoidItem {
                             text: "5-Hour Limit"
                             color: "#5B9BD5"
                             font.bold: true
+                            font.pixelSize: Kirigami.Theme.smallFont.pixelSize
                         }
                         Item { Layout.fillWidth: true }
                         PlasmaComponents.Label {
                             text: root.fiveHourPercent >= 0 ? root.fiveHourPercent.toFixed(0) + "%" : "--"
                             color: "#5B9BD5"
+                            font.pixelSize: Kirigami.Theme.smallFont.pixelSize
                         }
                     }
 
                     Rectangle {
                         Layout.fillWidth: true
-                        height: 6
-                        radius: 3
+                        height: 5
+                        radius: 2.5
                         color: Kirigami.Theme.backgroundColor
                         border.color: Kirigami.Theme.disabledTextColor
                         border.width: 0.5
@@ -290,7 +331,7 @@ PlasmoidItem {
                         Rectangle {
                             width: parent.width * Math.min(1, Math.max(0, root.fiveHourPercent / 100))
                             height: parent.height
-                            radius: 3
+                            radius: 2.5
                             color: "#5B9BD5"
                             visible: root.fiveHourPercent >= 0
                         }
@@ -315,18 +356,20 @@ PlasmoidItem {
                             text: "Weekly Limit"
                             color: "#E8913A"
                             font.bold: true
+                            font.pixelSize: Kirigami.Theme.smallFont.pixelSize
                         }
                         Item { Layout.fillWidth: true }
                         PlasmaComponents.Label {
                             text: root.weeklyPercent >= 0 ? root.weeklyPercent.toFixed(0) + "%" : "--"
                             color: "#E8913A"
+                            font.pixelSize: Kirigami.Theme.smallFont.pixelSize
                         }
                     }
 
                     Rectangle {
                         Layout.fillWidth: true
-                        height: 6
-                        radius: 3
+                        height: 5
+                        radius: 2.5
                         color: Kirigami.Theme.backgroundColor
                         border.color: Kirigami.Theme.disabledTextColor
                         border.width: 0.5
@@ -334,7 +377,7 @@ PlasmoidItem {
                         Rectangle {
                             width: parent.width * Math.min(1, Math.max(0, root.weeklyPercent / 100))
                             height: parent.height
-                            radius: 3
+                            radius: 2.5
                             color: "#E8913A"
                             visible: root.weeklyPercent >= 0
                         }
@@ -348,7 +391,7 @@ PlasmoidItem {
                     }
                 }
 
-                // Refresh interval slider
+                // Refresh interval slider with discrete stops
                 Rectangle {
                     Layout.fillWidth: true
                     height: 1
@@ -362,82 +405,41 @@ PlasmoidItem {
                     spacing: 2
 
                     PlasmaComponents.Label {
-                        text: "Refresh every " + intervalSlider.value + " min"
+                        text: "Refresh every " + root.intervalFromIndex(intervalSlider.value) + " min"
                         font.pixelSize: Kirigami.Theme.smallFont.pixelSize
                         color: Kirigami.Theme.disabledTextColor
                         Layout.fillWidth: true
                     }
 
+                    PlasmaComponents.Slider {
+                        id: intervalSlider
+                        Layout.fillWidth: true
+                        from: 0
+                        to: root.intervalStops.length - 1
+                        stepSize: 1
+                        snapMode: PlasmaComponents.Slider.SnapAlways
+                        value: root.indexFromInterval(Plasmoid.configuration.refreshInterval)
+                        onMoved: {
+                            Plasmoid.configuration.refreshInterval = root.intervalFromIndex(value);
+                        }
+                    }
+
+                    // Tick labels at ends
                     RowLayout {
                         Layout.fillWidth: true
-                        spacing: Kirigami.Units.smallSpacing
+                        spacing: 0
 
                         PlasmaComponents.Label {
-                            text: "1"
-                            font.pixelSize: Kirigami.Theme.smallFont.pixelSize
+                            text: "1m"
+                            font.pixelSize: Kirigami.Theme.smallFont.pixelSize * 0.85
                             color: Kirigami.Theme.disabledTextColor
                         }
-
-                        PlasmaComponents.Slider {
-                            id: intervalSlider
-                            Layout.fillWidth: true
-                            from: 1
-                            to: 60
-                            stepSize: 1
-                            value: Plasmoid.configuration.refreshInterval
-                            onMoved: {
-                                Plasmoid.configuration.refreshInterval = value;
-                            }
-                        }
-
+                        Item { Layout.fillWidth: true }
                         PlasmaComponents.Label {
-                            text: "60"
-                            font.pixelSize: Kirigami.Theme.smallFont.pixelSize
+                            text: "60m"
+                            font.pixelSize: Kirigami.Theme.smallFont.pixelSize * 0.85
                             color: Kirigami.Theme.disabledTextColor
                         }
-                    }
-                }
-
-                Rectangle {
-                    Layout.fillWidth: true
-                    height: 1
-                    color: Kirigami.Theme.disabledTextColor
-                    opacity: 0.3
-                }
-
-                PlasmaComponents.Button {
-                    text: "Open claude.ai"
-                    icon.name: "internet-web-browser"
-                    Layout.fillWidth: true
-                    onClicked: {
-                        Qt.openUrlExternally("https://claude.ai");
-                        root.expanded = false;
-                    }
-                }
-
-                PlasmaComponents.Button {
-                    text: root.loading ? "Refreshing..." : "Refresh Now"
-                    icon.name: "view-refresh"
-                    Layout.fillWidth: true
-                    enabled: !root.loading
-                    onClicked: {
-                        root.loading = true;
-                        root.fetchData();
-                    }
-                }
-
-                PlasmaComponents.Button {
-                    text: "Logout"
-                    icon.name: "system-log-out"
-                    Layout.fillWidth: true
-                    onClicked: {
-                        runCmd("claude auth logout");
-                        runCmd("python3 " + fetchScript + " --logout");
-                        root.loggedIn = false;
-                        root.fiveHourPercent = -1;
-                        root.weeklyPercent = -1;
-                        root.userEmail = "";
-                        root.expanded = false;
                     }
                 }
             }
