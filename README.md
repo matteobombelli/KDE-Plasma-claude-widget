@@ -33,6 +33,8 @@ If it doesn't appear, restart Plasma: `plasmashell --replace &`
 
 The widget periodically runs a Python script that makes a minimal API call (1-token Haiku request) using your Claude Code OAuth credentials. Rate limit utilization comes back in response headers (`anthropic-ratelimit-unified-5h-utilization` / `7d-utilization`). Results are cached in `~/.cache/claude-usage/usage.json`.
 
+Percentages may differ from the web UI by up to 1% due to API rounding.
+
 ## Uninstall
 
 ```bash

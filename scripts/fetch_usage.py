@@ -2,6 +2,7 @@
 """Fetch Claude Code usage data by making a minimal API call and reading rate limit headers."""
 
 import json
+import math
 import os
 import subprocess
 import sys
@@ -76,14 +77,14 @@ def fetch_usage(token):
 
     val = headers.get("anthropic-ratelimit-unified-5h-utilization")
     if val is not None:
-        result["five_hour_percent"] = round(float(val) * 100, 1)
+        result["five_hour_percent"] = math.ceil(float(val) * 100)
     val = headers.get("anthropic-ratelimit-unified-5h-reset")
     if val is not None:
         result["five_hour_reset"] = val
 
     val = headers.get("anthropic-ratelimit-unified-7d-utilization")
     if val is not None:
-        result["weekly_percent"] = round(float(val) * 100, 1)
+        result["weekly_percent"] = math.ceil(float(val) * 100)
     val = headers.get("anthropic-ratelimit-unified-7d-reset")
     if val is not None:
         result["weekly_reset"] = val
