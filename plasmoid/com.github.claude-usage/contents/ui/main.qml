@@ -137,6 +137,10 @@ PlasmoidItem {
         fetchSource.connectSource("CACHE_BUST=" + Date.now() + " python3 " + fetchScript + " --ttl " + Plasmoid.configuration.refreshInterval);
     }
 
+    function forceRefresh() {
+        fetchSource.connectSource("CACHE_BUST=" + Date.now() + " python3 " + fetchScript + " --force");
+    }
+
     function fetchCached() {
         fetchSource.connectSource("CACHE_BUST=" + Date.now() + " python3 " + fetchScript + " --cached");
     }
@@ -263,7 +267,7 @@ PlasmoidItem {
                     PlasmaComponents.ToolTip { text: root.loading ? "Refreshing..." : "Refresh now" }
                     onClicked: {
                         root.loading = true;
-                        root.fetchData();
+                        root.forceRefresh();
                     }
                 }
 

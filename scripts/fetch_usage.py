@@ -279,6 +279,8 @@ def main():
         return
 
     # Default: fetch fresh data, respecting TTL and Claude Code running state
+    force = "--force" in sys.argv
+
     token, sub_type = read_credentials()
     if not token:
         print(json.dumps(build_not_logged_in()))
@@ -286,9 +288,8 @@ def main():
 
     cached = load_cache()
 
-    # Serve from cache if Claude Code is running (avoid redundant/conflicting calls)
-    # or if the cache is still within the TTL window
-    if is_claude_code_running() or is_cache_fresh(cached, ttl_minutes):
+    # Serve from cache if still within the TTL window — unless --force is set
+    if not force and is_cache_fresh(cached, ttl_minutes):
         if cached:
             cached["logged_in"] = True
             cached["subscription_type"] = sub_type
