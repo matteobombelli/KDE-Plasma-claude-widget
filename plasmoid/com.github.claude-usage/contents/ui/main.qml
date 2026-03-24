@@ -134,7 +134,7 @@ PlasmoidItem {
 
     function fetchData() {
         // Use unique env var to bust DataSource cache without affecting the command
-        fetchSource.connectSource("CACHE_BUST=" + Date.now() + " python3 " + fetchScript);
+        fetchSource.connectSource("CACHE_BUST=" + Date.now() + " python3 " + fetchScript + " --ttl " + Plasmoid.configuration.refreshInterval);
     }
 
     function fetchCached() {

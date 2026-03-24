@@ -14,6 +14,8 @@ CREDENTIALS_PATH = os.path.expanduser("~/.claude/.credentials.json")
 CACHE_DIR = os.path.expanduser("~/.cache/claude-usage")
 CACHE_PATH = os.path.join(CACHE_DIR, "usage.json")
 API_URL = "https://api.anthropic.com/v1/messages"
+TOKEN_URL = "https://console.anthropic.com/v1/oauth/token"
+TOKEN_EXPIRY_BUFFER_MS = 5 * 60 * 1000  # refresh 5 minutes before expiry
 
 
 def read_credentials():
@@ -28,6 +30,97 @@ def read_credentials():
     if not token:
         return None, None
     return token, oauth.get("subscriptionType", "unknown")
+
+
+def is_token_expired():
+    """Check if the OAuth access token is expired or about to expire."""
+    try:
+        with open(CREDENTIALS_PATH) as f:
+            creds = json.load(f)
+    except (FileNotFoundError, json.JSONDecodeError):
+        return True
+    oauth = creds.get("claudeAiOauth") or {}
+    expires_at = oauth.get("expiresAt")
+    if expires_at is None:
+        return False  # no expiry info, assume valid
+    now_ms = int(time.time() * 1000)
+    return now_ms >= (expires_at - TOKEN_EXPIRY_BUFFER_MS)
+
+
+def refresh_token():
+    """Refresh the OAuth access token using the refresh token. Returns (new_token, subscription_type) or (None, None)."""
+    try:
+        with open(CREDENTIALS_PATH) as f:
+            creds = json.load(f)
+    except (FileNotFoundError, json.JSONDecodeError):
+        return None, None
+
+    oauth = creds.get("claudeAiOauth") or {}
+    refresh_tok = oauth.get("refreshToken")
+    if not refresh_tok:
+        return None, None
+
+    payload = json.dumps({
+        "grant_type": "refresh_token",
+        "refresh_token": refresh_tok,
+    }).encode()
+
+    req = urllib.request.Request(
+        TOKEN_URL,
+        data=payload,
+        headers={"content-type": "application/json"},
+        method="POST",
+    )
+
+    try:
+        resp = urllib.request.urlopen(req, timeout=15)
+        data = json.loads(resp.read().decode())
+    except Exception:
+        return None, None
+
+    new_access = data.get("access_token")
+    if not new_access:
+        return None, None
+
+    oauth["accessToken"] = new_access
+    if "refresh_token" in data:
+        oauth["refreshToken"] = data["refresh_token"]
+    if "expires_in" in data:
+        oauth["expiresAt"] = int(time.time() * 1000) + data["expires_in"] * 1000
+
+    creds["claudeAiOauth"] = oauth
+    try:
+        with open(CREDENTIALS_PATH, "w") as f:
+            json.dump(creds, f, indent=2)
+    except OSError:
+        pass
+
+    return new_access, oauth.get("subscriptionType", "unknown")
+
+
+def is_claude_code_running():
+    """Check if a Claude Code CLI process is currently running."""
+    try:
+        result = subprocess.run(
+            ["pgrep", "-x", "claude"],
+            capture_output=True, timeout=5,
+        )
+        return result.returncode == 0
+    except (subprocess.TimeoutExpired, FileNotFoundError, OSError):
+        return False
+
+
+def ensure_valid_token():
+    """Return a valid (token, subscription_type), refreshing if needed."""
+    token, sub_type = read_credentials()
+    if not token:
+        return None, None
+    if is_token_expired():
+        new_token, new_sub = refresh_token()
+        if new_token:
+            return new_token, new_sub
+        # fallthrough: try the current token anyway
+    return token, sub_type
 
 
 def get_auth_status():
@@ -106,6 +199,16 @@ def save_cache(data):
         json.dump(data, f)
 
 
+def is_cache_fresh(cached, ttl_minutes):
+    """Return True if the cached data is younger than ttl_minutes."""
+    if not cached:
+        return False
+    ts = cached.get("timestamp")
+    if ts is None:
+        return False
+    return (time.time() - ts) < ttl_minutes * 60
+
+
 def build_not_logged_in():
     return {
         "error": "not_logged_in",
@@ -120,6 +223,16 @@ def build_not_logged_in():
 
 
 def main():
+    # Parse --ttl argument (default: 5 minutes)
+    ttl_minutes = 5
+    if "--ttl" in sys.argv:
+        idx = sys.argv.index("--ttl")
+        if idx + 1 < len(sys.argv):
+            try:
+                ttl_minutes = max(1, int(sys.argv[idx + 1]))
+            except ValueError:
+                pass
+
     if "--status" in sys.argv:
         token, sub_type = read_credentials()
         if not token:
@@ -165,14 +278,34 @@ def main():
             print(json.dumps(result))
         return
 
-    # Default: fetch fresh data
+    # Default: fetch fresh data, respecting TTL and Claude Code running state
     token, sub_type = read_credentials()
     if not token:
         print(json.dumps(build_not_logged_in()))
         return
 
-    # Always resolve email: prefer cache, fall back to claude auth status
     cached = load_cache()
+
+    # Serve from cache if Claude Code is running (avoid redundant/conflicting calls)
+    # or if the cache is still within the TTL window
+    if is_claude_code_running() or is_cache_fresh(cached, ttl_minutes):
+        if cached:
+            cached["logged_in"] = True
+            cached["subscription_type"] = sub_type
+            if not cached.get("email"):
+                auth = get_auth_status()
+                if auth:
+                    cached["email"] = auth.get("email")
+                    cached["subscription_type"] = auth.get("subscriptionType", sub_type)
+            print(json.dumps(cached))
+            return
+
+    # Cache is stale and Claude Code is not running — refresh token and call API
+    token, sub_type = ensure_valid_token()
+    if not token:
+        print(json.dumps(build_not_logged_in()))
+        return
+
     email = (cached or {}).get("email")
     if not email:
         auth = get_auth_status()
@@ -188,7 +321,6 @@ def main():
         save_cache(result)
         print(json.dumps(result))
     except Exception as e:
-        # Fall back to cache on API error
         if cached:
             cached["error"] = str(e)
             cached["logged_in"] = True
