@@ -236,14 +236,14 @@ def fetch_usage(token):
 
     val = headers.get("anthropic-ratelimit-unified-5h-utilization")
     if val is not None:
-        result["five_hour_percent"] = math.ceil(float(val) * 100)
+        result["five_hour_percent"] = min(math.ceil(float(val) * 100) + 1, 100)
     val = headers.get("anthropic-ratelimit-unified-5h-reset")
     if val is not None:
         result["five_hour_reset"] = val
 
     val = headers.get("anthropic-ratelimit-unified-7d-utilization")
     if val is not None:
-        result["weekly_percent"] = math.ceil(float(val) * 100)
+        result["weekly_percent"] = min(math.ceil(float(val) * 100) + 1, 100)
     val = headers.get("anthropic-ratelimit-unified-7d-reset")
     if val is not None:
         result["weekly_reset"] = val
@@ -385,8 +385,7 @@ def main():
     cc_running = is_claude_code_running()
     debug_log(f"cc_running={cc_running}, force={force}, ttl_minutes={ttl_minutes}")
 
-    # When Claude Code is running, double the effective TTL to reduce interference
-    effective_ttl = ttl_minutes * 2 if cc_running else ttl_minutes
+    effective_ttl = ttl_minutes
 
     # Serve from cache if still within the effective TTL window — unless --force is set
     if not force and is_cache_fresh(cached, effective_ttl):

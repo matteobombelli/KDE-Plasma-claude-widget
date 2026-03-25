@@ -33,7 +33,7 @@ If it doesn't appear, restart Plasma: `plasmashell --replace &`
 
 The widget periodically runs a Python script that makes a minimal API call (1-token Haiku request) using your Claude Code OAuth credentials. Rate limit utilization is returned in response headers (`anthropic-ratelimit-unified-5h-utilization` / `7d-utilization`) and cached in `~/.cache/claude-usage/usage.json`.
 
-To avoid interfering with active Claude Code sessions, the widget skips API calls and serves cached data whenever Claude Code is running. Calls are only made when Claude Code is closed and the cache has exceeded the configured refresh interval.
+When Claude Code is running, the manual refresh button is disabled to avoid interference, but background polling continues at the configured interval.
 
 Percentages may differ from the web UI by up to 1% due to ceiling rounding.
 

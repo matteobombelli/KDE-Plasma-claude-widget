@@ -30,6 +30,12 @@ PlasmoidItem {
         onTriggered: root.clockTick++
     }
 
+    onExpandedChanged: {
+        if (expanded && !loading) {
+            fetchData();
+        }
+    }
+
     preferredRepresentation: compactRepresentation
     toolTipMainText: "Claude Usage"
     toolTipSubText: buildTooltip()
@@ -297,7 +303,7 @@ PlasmoidItem {
                     opacity: (root.loading || root.ccRunning) ? 0.4 : 1.0
                     PlasmaComponents.ToolTip {
                         text: root.loading ? "Refreshing..."
-                            : root.ccRunning ? "Claude Code is active \u2014 auto-refreshing at reduced frequency"
+                            : root.ccRunning ? "Claude Code is active \u2014 manual refresh disabled"
                             : "Refresh now"
                     }
                     onClicked: {
@@ -477,7 +483,7 @@ PlasmoidItem {
 
                     PlasmaComponents.Label {
                         text: "Refresh every " + root.intervalFromIndex(intervalSlider.value) + " min"
-                              + (root.ccRunning ? " (2\u00d7 while CC active)" : "")
+                              + (root.ccRunning ? " (CC active)" : "")
                         font.pixelSize: Kirigami.Theme.smallFont.pixelSize
                         color: Kirigami.Theme.disabledTextColor
                         Layout.fillWidth: true
@@ -552,7 +558,7 @@ PlasmoidItem {
         onTriggered: {
             attempts++;
             fetchData();
-            if (root.loggedIn || attempts >= 6) {
+            if (root.loggedIn || attempts >= 18) {
                 attempts = 0;
                 stop();
             }
