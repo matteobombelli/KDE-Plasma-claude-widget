@@ -18,6 +18,8 @@ PlasmoidItem {
     property bool loggedIn: false
     property string subscriptionType: ""
     property string userEmail: ""
+    property bool ccRunning: false
+    property int cacheAgeSeconds: -1
 
     // Ticks every 30s to keep countdown text fresh
     property int clockTick: 0
@@ -35,6 +37,7 @@ PlasmoidItem {
     function buildTooltip() {
         if (!loggedIn) return "Not logged in \u2014 click to log in";
         if (loading) return "Loading usage data...";
+        if (lastError === "token_expired") return "Session expired \u2014 open Claude Code to refresh";
         if (fiveHourPercent < 0 && weeklyPercent < 0) {
             return lastError ? "Error: " + lastError : "No data available";
         }
@@ -47,7 +50,19 @@ PlasmoidItem {
             lines.push("Weekly limit: " + weeklyPercent.toFixed(0) + "%");
             if (weeklyReset) lines.push("  Resets: " + formatReset(weeklyReset, clockTick));
         }
+        if (cacheAgeSeconds > 0) {
+            lines.push("Updated " + formatAge(cacheAgeSeconds) + " ago");
+        }
         return lines.join("\n");
+    }
+
+    function formatAge(seconds) {
+        if (seconds < 60) return seconds + "s";
+        var mins = Math.floor(seconds / 60);
+        if (mins < 60) return mins + "m";
+        var hrs = Math.floor(mins / 60);
+        var remMins = mins % 60;
+        return hrs + "h " + remMins + "m";
     }
 
     function formatReset(resetStr, _tick) {
@@ -88,6 +103,9 @@ PlasmoidItem {
             loggedIn = data.logged_in || false;
             subscriptionType = data.subscription_type || "";
             userEmail = data.email || "";
+            ccRunning = data.cc_running || false;
+            cacheAgeSeconds = (data.cache_age_seconds !== undefined && data.cache_age_seconds !== null)
+                ? data.cache_age_seconds : -1;
 
             if (data.five_hour_percent !== null && data.five_hour_percent !== undefined) {
                 fiveHourPercent = data.five_hour_percent;
@@ -121,7 +139,7 @@ PlasmoidItem {
         }
     }
 
-    // Separate DataSource for fire-and-forget commands (logout, konsole, etc.)
+    // Separate DataSource for fire-and-forget commands (logout, konsole, token refresh, etc.)
     PlasmaSupport.DataSource {
         id: cmdSource
         engine: "executable"
@@ -145,6 +163,10 @@ PlasmoidItem {
         fetchSource.connectSource("CACHE_BUST=" + Date.now() + " python3 " + fetchScript + " --cached");
     }
 
+    function refreshTokenOnly() {
+        cmdSource.connectSource("CACHE_BUST=" + Date.now() + " python3 " + fetchScript + " --refresh-token");
+    }
+
     function runCmd(cmd) {
         cmdSource.connectSource("CACHE_BUST=" + Date.now() + " " + cmd);
     }
@@ -155,6 +177,15 @@ PlasmoidItem {
         repeat: true
         running: true
         onTriggered: fetchData()
+    }
+
+    // Proactively refresh the OAuth token every 30 minutes to keep the refresh chain alive
+    Timer {
+        id: tokenRefreshTimer
+        interval: 30 * 60 * 1000
+        repeat: true
+        running: true
+        onTriggered: refreshTokenOnly()
     }
 
     Component.onCompleted: {
@@ -262,9 +293,13 @@ PlasmoidItem {
                     icon.name: "view-refresh"
                     display: PlasmaComponents.ToolButton.IconOnly
                     visible: root.loggedIn
-                    enabled: !root.loading
-                    opacity: root.loading ? 0.4 : 1.0
-                    PlasmaComponents.ToolTip { text: root.loading ? "Refreshing..." : "Refresh now" }
+                    enabled: !root.loading && !root.ccRunning
+                    opacity: (root.loading || root.ccRunning) ? 0.4 : 1.0
+                    PlasmaComponents.ToolTip {
+                        text: root.loading ? "Refreshing..."
+                            : root.ccRunning ? "Claude Code is active \u2014 auto-refreshing at reduced frequency"
+                            : "Refresh now"
+                    }
                     onClicked: {
                         root.loading = true;
                         root.forceRefresh();
@@ -311,6 +346,16 @@ PlasmoidItem {
                 visible: root.loggedIn
                 Layout.fillWidth: true
                 spacing: Kirigami.Units.mediumSpacing
+
+                // Token expired warning
+                PlasmaComponents.Label {
+                    visible: root.lastError === "token_expired"
+                    text: "Session expired \u2014 open Claude Code to refresh"
+                    font.pixelSize: Kirigami.Theme.smallFont.pixelSize
+                    color: Kirigami.Theme.neutralTextColor
+                    Layout.fillWidth: true
+                    wrapMode: Text.WordWrap
+                }
 
                 // 5-hour usage
                 ColumnLayout {
@@ -404,6 +449,19 @@ PlasmoidItem {
                     }
                 }
 
+                // Cache age / CC running indicator
+                PlasmaComponents.Label {
+                    visible: root.cacheAgeSeconds > 60 || root.ccRunning
+                    text: root.ccRunning
+                        ? (root.cacheAgeSeconds > 0
+                            ? "CC active \u2014 updated " + root.formatAge(root.cacheAgeSeconds) + " ago"
+                            : "Claude Code active")
+                        : (root.cacheAgeSeconds > 0 ? "Updated " + root.formatAge(root.cacheAgeSeconds) + " ago" : "")
+                    font.pixelSize: Kirigami.Theme.smallFont.pixelSize * 0.9
+                    color: Kirigami.Theme.disabledTextColor
+                    Layout.fillWidth: true
+                }
+
                 // Refresh interval slider with discrete stops
                 Rectangle {
                     Layout.fillWidth: true
@@ -419,6 +477,7 @@ PlasmoidItem {
 
                     PlasmaComponents.Label {
                         text: "Refresh every " + root.intervalFromIndex(intervalSlider.value) + " min"
+                              + (root.ccRunning ? " (2\u00d7 while CC active)" : "")
                         font.pixelSize: Kirigami.Theme.smallFont.pixelSize
                         color: Kirigami.Theme.disabledTextColor
                         Layout.fillWidth: true
